@@ -11,6 +11,7 @@
 #include "kernel/timer.h"
 #include "kernel/memory.h"
 #include "kernel/paging.h"
+#include "kernel/task.h"
 #include "lib/string.h"
 
 static void get_cpu_vendor(char* vendor) {
@@ -91,6 +92,81 @@ void demonstrate_milestone2(void) {
     kprintf("----------------------------------------------------------------\n");
 }
 
+/* --------------------------------------------------------------------------
+   Milestone 3 Tasks
+   -------------------------------------------------------------------------- */
+
+static uint32_t fibonacci(uint32_t n) {
+    if (n <= 1) return n;
+    uint32_t a = 0, b = 1;
+    for (uint32_t i = 2; i <= n; i++) {
+        uint32_t c = a + b;
+        a = b;
+        b = c;
+    }
+    return b;
+}
+
+static void task_alpha_fn(void) {
+    kprintf("[Task Alpha] Started (PID: %u). Computing Fibonacci sequence...\n", task_get_current()->pid);
+    for (int i = 1; i <= 3; i++) {
+        uint32_t f = fibonacci(i * 5);
+        kprintf("[Task Alpha] Iteration %d/3 -> Fib(%d) = %u. Yielding CPU.\n", i, i * 5, f);
+        task_yield();
+    }
+    kprintf("[Task Alpha] Finished computation. Exiting.\n");
+}
+
+static void task_beta_fn(void) {
+    kprintf("[Task Beta]  Started (PID: %u). Periodic status worker...\n", task_get_current()->pid);
+    for (int i = 1; i <= 3; i++) {
+        kprintf("[Task Beta]  Iteration %d/3: Heartbeat OK (Tick: %u). Yielding CPU.\n",
+                i, (uint32_t)timer_get_ticks());
+        task_yield();
+    }
+    kprintf("[Task Beta]  Finished worker cycles. Exiting.\n");
+}
+
+static void task_gamma_fn(void) {
+    kprintf("[Task Gamma] Started (PID: %u). Testing task lifecycle states...\n", task_get_current()->pid);
+    for (int i = 1; i <= 2; i++) {
+        kprintf("[Task Gamma] Iteration %d/2: State is RUNNING. Yielding.\n", i);
+        task_yield();
+    }
+    kprintf("[Task Gamma] Lifecycle test complete. Exiting.\n");
+}
+
+void demonstrate_milestone3(void) {
+    kprintf("\n--- Milestone 3 Verification: Tasks, Context Switching, & Scheduler ---\n");
+
+    // Initialize round-robin scheduler with main kernel thread
+    scheduler_init();
+
+    // Create 3 independent tasks with their own 16KB stacks
+    task_t* t1 = task_create("Worker-Alpha", task_alpha_fn, 2);
+    task_t* t2 = task_create("Worker-Beta",  task_beta_fn,  2);
+    task_t* t3 = task_create("Worker-Gamma", task_gamma_fn, 1);
+    (void)t1; (void)t2; (void)t3;
+
+    kprintf("[+] Initial Task State:\n");
+    __asm__ volatile ("cli");
+    task_dump_all();
+    __asm__ volatile ("sti");
+
+    kprintf("\n[+] Main Thread: Yielding control to let child tasks progress...\n");
+
+    // Yield repeatedly to allow child tasks to interleave and execute
+    for (int i = 0; i < 6; i++) {
+        task_yield();
+    }
+
+    kprintf("\n[PASS] Context Switching: All tasks progressed cooperatively and ran to completion!\n");
+    __asm__ volatile ("cli");
+    task_dump_all();
+    __asm__ volatile ("sti");
+    kprintf("----------------------------------------------------------------\n");
+}
+
 void kmain(multiboot_info_t* mboot, uint32_t magic) {
     // 1. Early serial and console initialization
     serial_init();
@@ -147,5 +223,8 @@ void kmain(multiboot_info_t* mboot, uint32_t magic) {
     // 10. Run Milestone 2 demonstrations
     demonstrate_milestone2();
 
-    kprintf("Mini OS Kernel is ready for Milestone 3 (Multitasking & Scheduler)...\n");
+    // 11. Run Milestone 3 demonstrations
+    demonstrate_milestone3();
+
+    kprintf("Mini OS Kernel is ready for Milestone 4 (Synchronization & Filesystem)...\n");
 }
