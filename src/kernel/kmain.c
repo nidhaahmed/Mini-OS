@@ -15,6 +15,7 @@
 #include "kernel/lock.h"
 #include "kernel/syscall.h"
 #include "kernel/vfs.h"
+#include "tests/smoke_test.h"
 #include "lib/string.h"
 
 static void get_cpu_vendor(char* vendor) {
@@ -338,7 +339,10 @@ void kmain(multiboot_info_t* mboot, uint32_t magic) {
     // 12. Run Milestone 4 demonstrations
     demonstrate_milestone4();
 
+    // 13. Run End-to-End Automated Smoke Tests
+    run_kernel_smoke_tests();
+
     kprintf("\n================================================================\n");
-    kprintf("   [ALL MILESTONES 1-4 FULLY OPERATIONAL AND VERIFIED]          \n");
+    kprintf("   [MINI OS: ALL 5 MILESTONES FULLY OPERATIONAL AND VERIFIED]   \n");
     kprintf("================================================================\n");
 }

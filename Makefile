@@ -69,7 +69,7 @@ gdb:
 
 test: build
 	@echo "[TEST] Running Mini OS automated boot smoke test..."
-	timeout 5s $(QEMU) -kernel $(BIN_ELF32) -serial stdio -display none || true
+	timeout 8s $(QEMU) -kernel $(BIN_ELF32) -serial stdio -display none || true
 
 clean:
 	@echo "[CLEAN] Removing build artifacts..."
