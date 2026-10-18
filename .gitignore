@@ -1,0 +1,6 @@
+build/
+*.o
+*.elf
+*.bin
+*.iso
+.gdb_history
