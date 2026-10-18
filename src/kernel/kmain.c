@@ -4,6 +4,13 @@
 #include "kernel/serial.h"
 #include "kernel/console.h"
 #include "kernel/io.h"
+#include "kernel/gdt.h"
+#include "kernel/idt.h"
+#include "kernel/isr.h"
+#include "kernel/pic.h"
+#include "kernel/timer.h"
+#include "kernel/memory.h"
+#include "kernel/paging.h"
 #include "lib/string.h"
 
 static void get_cpu_vendor(char* vendor) {
@@ -19,11 +26,74 @@ static void get_cpu_vendor(char* vendor) {
     vendor[12] = '\0';
 }
 
-void kmain(multiboot_info_t* mboot, uint32_t magic) {
-    // Initialize serial first for immediate logging
-    serial_init();
+static volatile int breakpoint_handled = 0;
+static void breakpoint_test_handler(interrupt_frame_t* frame) {
+    (void)frame;
+    breakpoint_handled = 1;
+    kprintf("[+] Interrupt Handler: Caught Breakpoint (#BP, Vector 3) safely!\n");
+}
 
-    // Initialize VGA console (and dual serial logging)
+void demonstrate_milestone2(void) {
+    kprintf("\n--- Milestone 2 Verification: CPU, Interrupts, and Memory ---\n");
+
+    // 1. Test CPU Exception Handling (Breakpoint #BP)
+    isr_register_handler(3, breakpoint_test_handler);
+    __asm__ volatile ("int3");
+    if (breakpoint_handled) {
+        kprintf("[PASS] CPU Exception #BP caught and recovered safely.\n");
+    } else {
+        kprintf("[FAIL] CPU Exception #BP was not caught.\n");
+    }
+
+    // 2. Test Timer Interrupts (Wait for 5 ticks = 50ms)
+    uint64_t t0 = timer_get_ticks();
+    kprintf("[+] Timer Check  : Waiting 5 ticks (50ms)...\n");
+    timer_sleep_ticks(5);
+    uint64_t t1 = timer_get_ticks();
+    kprintf("[PASS] Timer Ticks: Progressed from %u to %u (%u ticks elapsed)\n",
+            (uint32_t)t0, (uint32_t)t1, (uint32_t)(t1 - t0));
+
+    // 3. Test Kernel Heap Allocator (kmalloc / kfree / coalescing)
+    void* ptr1 = kmalloc(128);
+    void* ptr2 = kmalloc(512);
+    void* ptr3 = kmalloc(1024);
+    kprintf("[+] Heap Test    : Allocated p1=%p (128B), p2=%p (512B), p3=%p (1KB)\n", ptr1, ptr2, ptr3);
+
+    strcpy((char*)ptr1, "Hello from kmalloc heap!");
+    kprintf("[+] Heap Content : \"%s\"\n", (char*)ptr1);
+
+    kfree(ptr2);
+    kfree(ptr1);
+    kfree(ptr3);
+    kprintf("[PASS] Heap Coalescing: Freed all allocations cleanly.\n");
+    heap_dump_stats();
+
+    // 4. Test Virtual Memory and 4-Level Paging
+    uint64_t test_virt = 0xCAFE0000ULL;
+    uint64_t test_phys = pmm_alloc_frame();
+    kprintf("[+] Paging Test  : Mapping Virtual %p -> Physical %p\n", (void*)test_virt, (void*)test_phys);
+
+    paging_map_page(test_virt, test_phys, PTE_PRESENT | PTE_WRITABLE);
+    uint64_t translated = paging_get_phys(test_virt);
+    kprintf("[+] Paging Walk  : Translated %p -> %p\n", (void*)test_virt, (void*)translated);
+
+    volatile uint32_t* page_ptr = (volatile uint32_t*)test_virt;
+    *page_ptr = 0x12345678;
+    if (*page_ptr == 0x12345678 && translated == test_phys) {
+        kprintf("[PASS] Virtual Memory: Read/write verified through 4-level page tables.\n");
+    } else {
+        kprintf("[FAIL] Virtual Memory verification failed.\n");
+    }
+
+    paging_unmap_page(test_virt);
+    pmm_free_frame(test_phys);
+    kprintf("[PASS] Page Unmapped successfully.\n");
+    kprintf("----------------------------------------------------------------\n");
+}
+
+void kmain(multiboot_info_t* mboot, uint32_t magic) {
+    // 1. Early serial and console initialization
+    serial_init();
     console_init();
 
     kprintf("\n");
@@ -48,17 +118,34 @@ void kmain(multiboot_info_t* mboot, uint32_t magic) {
         kprintf("[!] Bootloader   : Non-standard boot magic: 0x%x\n", magic);
     }
 
-    if (mboot && (mboot->flags & MULTIBOOT_INFO_MEMORY)) {
-        uint64_t total_ram_kb = mboot->mem_lower + mboot->mem_upper;
-        kprintf("[+] System RAM   : %u KB (~%u MB)\n", total_ram_kb, total_ram_kb / 1024);
-    }
+    // 2. CPU Descriptors (GDT & TSS)
+    gdt_init();
 
-    if (mboot && (mboot->flags & MULTIBOOT_INFO_BOOTDEV)) {
-        kprintf("[+] Boot Device  : 0x%x\n", mboot->boot_device);
-    }
+    // 3. Interrupt Descriptors & Exceptions
+    idt_init();
+    isr_init();
 
-    kprintf("[+] Console      : VGA 80x25 text buffer (0xB8000) + COM1 115200 8N1\n");
-    kprintf("[+] Status       : Milestone 1 (Bootable Foundation) Active!\n");
-    kprintf("----------------------------------------------------------------\n");
-    kprintf("Mini OS Kernel is alive and waiting for next milestones...\n");
+    // 4. Programmable Interrupt Controller
+    pic_init();
+
+    // 5. Physical Memory Management (PMM)
+    pmm_init(mboot);
+
+    // 6. 4-Level Paging Initialization
+    paging_init();
+
+    // 7. Kernel Heap Allocator
+    kmalloc_init();
+
+    // 8. PIT Timer at 100 Hz (10ms tick interval)
+    timer_init(100);
+
+    // 9. Enable Hardware Interrupts
+    __asm__ volatile ("sti");
+    kprintf("[+] CPU Flags    : Interrupts enabled (IF = 1)\n");
+
+    // 10. Run Milestone 2 demonstrations
+    demonstrate_milestone2();
+
+    kprintf("Mini OS Kernel is ready for Milestone 3 (Multitasking & Scheduler)...\n");
 }

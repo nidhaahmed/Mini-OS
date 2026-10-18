@@ -5,7 +5,7 @@ QEMU := qemu-system-x86_64
 GDB := gdb
 
 CFLAGS := -Wall -Wextra -ffreestanding -mno-red-zone -fno-pie -fno-stack-protector \
-          -mcmodel=kernel -m64 -Iinclude -O2 -g
+          -mcmodel=kernel -m64 -mgeneral-regs-only -Iinclude -O2 -g
 
 ASFLAGS := -m64 -Iinclude -g
 

@@ -92,9 +92,9 @@ map_pd_loop:
     mov eax, offset initial_pml4
     mov cr3, eax
 
-    /* Enable PAE (Physical Address Extension) in CR4 bit 5 */
+    /* Enable PAE (Physical Address Extension) in CR4 bit 5 and OSFXSR/OSXMMEXCPT bits 9-10 */
     mov eax, cr4
-    or eax, (1 << 5)
+    or eax, (1 << 5) | (3 << 9)
     mov cr4, eax
 
     /* Set Long Mode Enable (LME) in EFER MSR (0xC0000080, bit 8) */
@@ -103,9 +103,10 @@ map_pd_loop:
     or eax, (1 << 8)
     wrmsr
 
-    /* Enable Paging (PG, bit 31) and Protection (PE, bit 0) in CR0 */
+    /* Enable Paging (PG, bit 31), Protection (PE, bit 0), MP (bit 1) and clear EM (bit 2) in CR0 */
     mov eax, cr0
-    or eax, 0x80000001
+    and eax, ~(1 << 2)        /* Clear EM */
+    or eax, 0x80000003        /* PG | PE | MP */
     mov cr0, eax
 
     /* Load 64-bit Global Descriptor Table */
